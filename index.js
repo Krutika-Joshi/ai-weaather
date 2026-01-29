@@ -6,11 +6,18 @@ const app = express();
 const port = 5000;
 const path = require("path");
 const axios = require('axios');
-const OpenAI = require("openai");
+const Groq = require("groq-sdk");
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+    async function callAI(prompt) {
+    const completion = await groq.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 120,
+    });
+
+    return completion.choices[0].message.content;
+    }
 
 
 app.use(express.json());
@@ -44,31 +51,49 @@ app.post("/weather",  async(req, res) => {
         windSpeed: weatherData.wind.speed
     };
 
-    console.log(weatherData);
+    console.log("Weather fetched for:", cleanWeatherData.city);
+
     // res.json(cleanWeatherData);
 
-    const prompt = `Explain today's weather in a friendly, simple, and slightly humorous way.
-                    city: ${cleanWeatherData.city}
-                    temperature: ${cleanWeatherData.temperature}°C
-                    feelsLike: ${cleanWeatherData.feelsLike}°C
-                    humidity: ${cleanWeatherData.humidity}%
-                    condition: ${cleanWeatherData.condition}
-                    windSpeed: ${cleanWeatherData.windSpeed}km/h
+    const prompt = `You are a funny but informative weather reporter.
+                    Write ONLY 2 short sentences.
+                    Each sentence must be under 12 words.
+                    Use light, natural humor (not cringe).
+                    Do NOT use quotes.
+                    Do NOT repeat words.
+                    Mention only:
+                    - temperature
+                    - condition
+                    - one practical advice
+                    Mode: funny / sarcastic / professional
+
+
+                    City: ${cleanWeatherData.city}
+                    Temperature: ${Math.round(cleanWeatherData.temperature)}°C
+                    Feels like: ${cleanWeatherData.feelsLike}°C
+                    Humidity: ${cleanWeatherData.humidity}%
+                    Condition: ${cleanWeatherData.condition}
+                    Wind speed: ${cleanWeatherData.windSpeed} km/h
+
+                    Give a friendly weather report with one practical advice.
                     `;
 
-       let aiSummary = "AI summary is temporarily unavailable. Please check again later.";
+    let aiSummary = `It's ${cleanWeatherData.temperature}°C in ${cleanWeatherData.city} with ${cleanWeatherData.condition}. 
+                        Basically, weather is doing its thing again 😄 Stay prepared!`;
 
         try {
-            const aiResponse = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [{ role: "user", content: prompt }]
-            });
+            aiSummary = await callAI(prompt);
 
-            aiSummary = aiResponse.choices[0].message.content;
-
+            aiSummary = aiSummary
+            .replace(/\n/g, "")
+            .split(".")
+            .slice(0, 2)
+            .join(".")
+            .trim() + ".";
         } catch (aiError) {
-            console.error("AI FALLBACK:", aiError.code || aiError.message);
+            console.error("GROQ FALLBACK:", aiError.message);
         }
+
 
         return res.json({
             ...cleanWeatherData,
